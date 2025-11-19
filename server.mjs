@@ -15,7 +15,7 @@ const client = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Profilbeschreibungen für die Kundentypen
+// Profilbeschreibungen für die Kundentypen (für den Chat)
 const profileDescriptions = {
   K1: "Daniel Koch (38), sportlicher Familienvater, Elektriker, zwei Kinder, Rückenprobleme, will fit bleiben.",
   K2: "Jasmin Hoffmann (31), alleinerziehend, im Einzelhandel, viel Stress, wenig Zeit.",
@@ -29,12 +29,26 @@ const profileDescriptions = {
   K10: "Patrick Sommer (34), sehr freundlicher Typ, offen, interessiert an Gesundheit.",
 };
 
+// Stimmprofile pro Kundentyp für die TTS-Ausgabe
+const voiceProfiles = {
+  K1:  { voice: "alloy",  style: "neutral, gelassen, freundlich" },
+  K2:  { voice: "nova",   style: "jung, gestresst, leicht erschöpft" },
+  K3:  { voice: "dexter", style: "älter, langsam, leicht müde" },
+  K4:  { voice: "shimmer",style: "jung, klar, dynamisch" },
+  K5:  { voice: "verse",  style: "erwachsen, sachlich, kurz angebunden" },
+  K6:  { voice: "sage",   style: "freundlich, warm, kommunikativ" },
+  K7:  { voice: "dexter", style: "skeptisch, misstrauisch, langsam" },
+  K8:  { voice: "nova",   style: "jung, freundlich, beruhigend" },
+  K9:  { voice: "verse",  style: "sachlich, direkt, effizient" },
+  K10: { voice: "shimmer",style: "locker, positiv, gut gelaunt" },
+};
+
 // Healthcheck
 app.get("/", (req, res) => {
   res.send("AOK Telefontraining Backend läuft.");
 });
 
-// POST /chat  ->  nimmt history + profileId an, antwortet mit Kundentext
+// POST /chat  ->  nimmt history + profileId an, antwortet mit Kundentext (nur Text)
 app.post("/chat", async (req, res) => {
   try {
     const { profileId, history } = req.body;
@@ -44,7 +58,8 @@ app.post("/chat", async (req, res) => {
     }
 
     const profilText =
-      profileDescriptions[profileId] || "unbekanntes Profil, verhalte dich neutral.";
+      profileDescriptions[profileId] ||
+      "unbekanntes Profil, verhalte dich neutral.";
 
     const systemPrompt = `
 Du bist ein KUNDE der AOK NordWest in einem Telefontraining.
@@ -65,7 +80,6 @@ Wenn das Gespräch startet, melde dich wie ein Kunde am Telefon,
 z.B. "Ja hallo, hier ist ${profilText.split(",")[0]}, worum geht es denn?".
 `.trim();
 
-    // Chat-Verlauf aufbauen
     const messages = [
       { role: "system", content: systemPrompt },
       ...(history || []),
@@ -99,7 +113,50 @@ z.B. "Ja hallo, hier ist ${profilText.split(",")[0]}, worum geht es denn?".
   }
 });
 
+// POST /voice -> erzeugt passende Audio-Stimme je nach Kunde
+app.post("/voice", async (req, res) => {
+  try {
+    const { text, profileId } = req.body;
+
+    if (!text || !profileId) {
+      return res.status(400).json({ error: "Text oder profileId fehlt" });
+    }
+
+    const vp = voiceProfiles[profileId] || voiceProfiles["K1"];
+
+    const ttsInput = `
+Sprich den folgenden Text als simulierte Telefonkundin oder -kunde.
+Emotion / Sprechstil: ${vp.style}
+Sprich natürlich, so wie am Telefon.
+
+Text:
+${text}
+    `.trim();
+
+    const audioResponse = await client.audio.speech.create({
+      model: "gpt-4o-mini-tts",
+      voice: vp.voice,
+      input: ttsInput,
+    });
+
+    const buffer = Buffer.from(await audioResponse.arrayBuffer());
+
+    res.set({
+      "Content-Type": "audio/mpeg",
+      "Content-Length": buffer.length,
+    });
+
+    res.send(buffer);
+  } catch (err) {
+    console.error("Fehler in /voice:", err);
+    res
+      .status(500)
+      .json({ error: "TTS fehlgeschlagen", details: String(err) });
+  }
+});
+
 // Serverstart
 app.listen(port, () => {
   console.log(`Backend läuft auf Port ${port}`);
 });
+
