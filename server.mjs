@@ -1,221 +1,59 @@
-import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import OpenAI from "openai";
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import OpenAI from 'openai';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+// KI-Client
 const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY
 });
 
-app.use(cors());
-app.use(express.json());
+// CORS
+const allowedOrigin = process.env.ALLOWED_ORIGIN || "*";
+app.use(cors({
+  origin: allowedOrigin,
+}));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// ----------------------------------------
-// 1. Kundentypen (psychologisch geschärft)
-// ----------------------------------------
-
-const customerProfiles = {
-  K1: {
-    name: "Daniel Koch",
-    voice: "alloy",
-    temperament: "freundlich, bodenständig, leicht gehetzt",
-    speed: 1.05,
-    description: `
-38, verheiratet, 2 Kinder, Elektriker.
-Redet normal schnell, oft leicht hektisch.
-Sagt oft Dinge wie: "Ja, alles klar", "Ich bin grad etwas im Stress".
-Reagiert positiv, wenn es um Familienleistungen geht.
-Typische Einwände:
-- "Ja, ich hab eigentlich wenig Zeit"
-- "Machen wir kurz, ja?"
-Redeanteil: mittel.
-    `
-  },
-
-  K2: {
-    name: "Jasmin Hoffmann",
-    voice: "nova",
-    temperament: "gestresst, freundlich, oft überfordert",
-    speed: 1.15,
-    description: `
-31, alleinerziehend, Schichtdienst.
-Spricht schnell, manchmal abgehackt.
-Vermeidet lange Erklärungen.
-Typische Ausdrücke:
-- "Ich muss gleich los"
-- "Das ist alles so viel gerade"
-- "Können Sie mir das einfach erklären?"
-Redeanteil: niedrig.
-    `
-  },
-
-  K3: {
-    name: "Horst Meier",
-    voice: "dexter",
-    temperament: "ruhig, langsam, skeptisch",
-    speed: 0.85,
-    description: `
-72, Rentner, lebt allein.
-Spricht langsam, nachdenklich, misstrauisch.
-Stellt viele Rückfragen.
-Typische Einwände:
-- "Brauche ich das wirklich?"
-- "Was kostet das denn?"
-- "Ich verstehe das nicht ganz."
-Redeanteil: mittel, aber langsam.
-    `
-  },
-
-  K4: {
-    name: "Lea Weber",
-    voice: "shimmer",
-    temperament: "jung, locker, modern",
-    speed: 1.2,
-    description: `
-24, Berufseinsteigerin.
-Spricht schnell, modern, humorvoll.
-Typische Worte:
-- "Okay, cool"
-- "Alles klar"
-- "Moment kurz"
-Redeanteil: hoch.
-    `
-  },
-
-  K5: {
-    name: "Mehmet Arslan",
-    voice: "verse",
-    temperament: "direkt, sachlich, wenig Zeit",
-    speed: 1.0,
-    description: `
-44, selbstständig, körperliche Arbeit.
-Kurz angebundene Sätze.
-Typische Reaktionen:
-- "Sagen Sie einfach, worum's geht"
-- "Machen wir's kurz"
-- "Ich arbeite gerade"
-Redeanteil: sehr gering.
-    `
-  },
-
-  K6: {
-    name: "Nadine Krüger",
-    voice: "sage",
-    temperament: "freundlich, warm, leicht chaotisch",
-    speed: 1.05,
-    description: `
-36, zwei Kinder, Familienmanagerin.
-Lebhaft, freundlich, aber ablenkbar.
-Typische Sätze:
-- "Einen Moment, bitte"
-- "Sorry, die Kinder wieder…"
-Redeanteil: hoch.
-    `
-  },
-
-  K7: {
-    name: "Wolfgang Lüders",
-    voice: "dexter",
-    temperament: "skeptisch, leicht genervt",
-    speed: 0.9,
-    description: `
-68, Rentner, misstrauisch gegenüber Anrufen.
-Typische Einwände:
-- "Ich sag Ihnen gleich, ich kauf nix"
-- "Was wollen Sie denn verkaufen?"
-- "Ich glaub das alles nicht"
-Redeanteil: niedrig.
-    `
-  },
-
-  K8: {
-    name: "Anna Berger",
-    voice: "nova",
-    temperament: "sanft, unsicher, freundlich",
-    speed: 1.0,
-    description: `
-29, junge Mutter.
-Leise, besorgt, freundlich.
-Typische Sätze:
-- "Ich kenn mich da nicht so aus"
-- "Ist das gut für mein Kind?"
-Redeanteil: mittel.
-    `
-  },
-
-  K9: {
-    name: "Christian Falk",
-    voice: "verse",
-    temperament: "effizient, sachlich, keine Zeit",
-    speed: 1.15,
-    description: `
-42, IT-Führungskraft.
-Sehr direkt, erkennt Füllsätze.
-Hasst Zeitverschwendung.
-Typisch:
-- "Bitte auf den Punkt"
-- "Fassen Sie sich kurz"
-Redeanteil: gering.
-    `
-  },
-
-  K10: {
-    name: "Patrick Sommer",
-    voice: "shimmer",
-    temperament: "locker, humorvoll, freundlich",
-    speed: 1.1,
-    description: `
-34, guter Typ, entspannt.
-Typische Sätze:
-- "Kein Stress"
-- "Alles easy"
-Redeanteil: hoch.
-    `
-  }
+// Profile
+const profileDescriptions = {
+  K1: "Daniel Koch (38), sportlicher Familienvater, Elektriker.",
+  K2: "Jasmin Hoffmann (31), alleinerziehend, gestresst, wenig Zeit.",
+  K3: "Horst Meier (72), Rentner, ruhiges Temperament, skeptisch.",
+  K4: "Lea Weber (24), Berufseinsteigerin, freundlich, offen.",
+  K5: "Mehmet Arslan (44), selbstständig, pragmatisch, knapp angebunden.",
+  K6: "Nadine Krüger (36), Familienmanagerin, oft gehetzt, freundlich.",
+  K7: "Wolfgang Lüders (68), skeptisch, hinterfragt alles.",
+  K8: "Anna Berger (29), junge Mutter, vorsichtig, sicherheitsbedacht.",
+  K9: "Christian Falk (42), IT-Führungskraft, effizient, will klare Infos.",
+  K10:"Patrick Sommer (34), sehr freundlich, offen, gesprächig."
 };
 
-// ----------------------------------------
-// 2. Chat – mit starken Profilen
-// ----------------------------------------
 
-app.post("/chat", async (req, res) => {
+/* -------------------------------------------------------
+   1) CUSTOMER REPLY (CHAT)
+-------------------------------------------------------- */
+app.post('/chat', async (req, res) => {
   try {
     const { profileId, history } = req.body;
-
-    const profile = customerProfiles[profileId];
+    const profilText = profileDescriptions[profileId] || "Unbekannt";
 
     const systemPrompt = `
-Du bist ein realer Privatkunde am Telefon.
-Verhalte dich exakt nach folgendem Profil:
+Du bist ein realistischer AOK-NordWest-Kunde im Telefontraining.
 
-Name: ${profile.name}
-Temperament: ${profile.temperament}
-Sprechgeschwindigkeit: ${profile.speed}
-Profilbeschreibung:
-${profile.description}
+WICHTIG:
+- Sprich NIEMALS über dein Profil oder deine Eigenschaften!
+- Melde dich wie ein echter Privatkunde: z.B. "Ja?", "Weber hier.", "Hallo?"
+- Keine langen Monologe – 1–2 Sätze.
+- Weise natürliche Stimmung auf (gestresst, skeptisch, freundlich … abhängig vom Profil)
+- Gib NIEMALS Infos preis, die kein echter Kunde sagen würde.
 
-REGELN:
-- Kein Alter nennen.
-- Keine vollständigen persönlichen Daten.
-- Rede wie echte Menschen (Pausen, ähs, kurze Sätze).
-- Verwende die Wortwahl & Geschwindigkeit aus dem Profil.
-- Keine KI-Floskeln.
-- Reagiere emotional passend.
-- Lass die Telefonkraft reden, wenn sie spricht.
-- Keine ellenlangen Antworten.
-
-Begrüßung NUR wie echte Menschen:
-- "Ja, ${profile.name.split(" ")[1]}?"
-- "${profile.name.split(" ")[0]}?"
-- "Ja bitte?"
-
-KEIN:
-"Worum geht's?"
-"Möchten Sie verkaufen?"
-"Ich bin eine KI."
+Dein Profil:
+${profilText}
     `.trim();
 
     const messages = [
@@ -224,88 +62,119 @@ KEIN:
     ];
 
     if (!history || history.length === 0) {
-      messages.push({
-        role: "user",
-        content: "Starte das Gespräch wie ein echter Kunde."
-      });
+      messages.push({ role: "user", content: "Gespräch beginnen." });
     }
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      messages,
-      temperature: 0.85
+      temperature: 0.7,
+      messages
     });
 
-    const reply =
-      completion.choices?.[0]?.message?.content ||
-      "Entschuldigung, ich hab das nicht verstanden.";
-
+    const reply = completion.choices[0].message.content;
     res.json({ reply });
 
   } catch (err) {
-    console.error(err);
+    console.error("Chat Error:", err);
     res.status(500).json({ error: "Chat-Fehler" });
   }
 });
 
-// ----------------------------------------
-// 3. TTS – Stimme + Tempo + Tonlage
-// ----------------------------------------
 
+/* -------------------------------------------------------
+   2) SPEECH TO TEXT (WHISPER)
+   → kompatibel mit deinem Frontend (Base64)
+-------------------------------------------------------- */
+app.post("/transcribe", async (req, res) => {
+  try {
+    const { audioBase64 } = req.body;
+
+    if (!audioBase64) {
+      return res.status(400).json({ error: "audioBase64 fehlt" });
+    }
+
+    // Base64 → Buffer
+    const buffer = Buffer.from(audioBase64, "base64");
+
+    // GPT-4o Transcribe versteht Buffer direkt ❤️
+    const transcription = await client.audio.transcriptions.create({
+      file: buffer,
+      model: "gpt-4o-transcribe",
+      response_format: "json"
+    });
+
+    res.json({ text: transcription.text });
+
+  } catch (err) {
+    console.error("Whisper Fehler:", err.response?.data || err);
+    res.status(500).json({ error: "Whisper-Fehler" });
+  }
+});
+
+
+/* -------------------------------------------------------
+   3) TEXT TO SPEECH (OPENAI)
+   → gibt WAV zurück, wie dein Frontend erwartet
+-------------------------------------------------------- */
 app.post("/voice", async (req, res) => {
   try {
     const { text, profileId } = req.body;
-    const profile = customerProfiles[profileId];
 
-    const audioResponse = await client.audio.speech.create({
+    const voiceMap = {
+      K1: "alloy",
+      K2: "verse",
+      K3: "sage",
+      K4: "alloy",
+      K5: "alloy",
+      K6: "verse",
+      K7: "sage",
+      K8: "verse",
+      K9: "alloy",
+      K10:"alloy"
+    };
+
+    const voice = voiceMap[profileId] || "alloy";
+
+    const tts = await client.audio.speech.create({
       model: "gpt-4o-mini-tts",
-      voice: profile.voice,
+      voice,
       input: text,
-      speed: profile.speed
+      format: "wav"
     });
 
-    const buffer = Buffer.from(await audioResponse.arrayBuffer());
-
-    res.set({
-      "Content-Type": "audio/mpeg",
-      "Content-Length": buffer.length
-    });
-
-    res.send(buffer);
+    const wav = Buffer.from(await tts.arrayBuffer());
+    res.setHeader("Content-Type", "audio/wav");
+    res.send(wav);
 
   } catch (err) {
-    console.error(err);
+    console.error("TTS Fehler:", err);
     res.status(500).json({ error: "TTS-Fehler" });
   }
 });
 
-// ----------------------------------------
-// 4. Bewertung / Feedback-Funktion
-// ----------------------------------------
 
+/* -------------------------------------------------------
+   4) FEEDBACK
+-------------------------------------------------------- */
 app.post("/feedback", async (req, res) => {
   try {
     const { transcript, profileId } = req.body;
-    const profile = customerProfiles[profileId];
 
     const prompt = `
-Du bist professioneller AOK-Telefontrainer.
+Gib ein präzises Feedback zu dieser Antwort eines AOK-Telefonmitarbeiters.
 
-Bewerte die Antwort des Telefonisten in diesen Punkten:
+Kriterien:
+- Tonalität (freundlich, empathisch, ruhig?)
+- Geschwindigkeit (zu schnell / zu langsam?)
+- Gesprächsführung
+- Bedarfsanalyse gut / schlecht?
+- Zu viel Monolog?
+- Professionelles Wording?
+- Verbesserungsvorschläge in 3–5 Bullet Points.
 
-1. Einstieg & Gesprächsführung  
-2. Empathie & Tonfall  
-3. Fragetechnik  
-4. Eingehen auf das Profil (${profile.name})  
-5. Redeanteil-Verteilung  
-6. Professionalität  
-7. Verbesserungstipps (konkret!)
-
-Antwort klar strukturiert.
-Hier ist die Antwort des Mitarbeiters:
-
+Antwort des Mitarbeiters:
 "${transcript}"
-`;
+    `.trim();
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
@@ -315,13 +184,19 @@ Hier ist die Antwort des Mitarbeiters:
     res.json({ feedback: completion.choices[0].message.content });
 
   } catch (err) {
-    console.error(err);
+    console.error("Feedback Fehler:", err);
     res.status(500).json({ error: "Feedback-Fehler" });
   }
 });
 
-// ----------------------------------------
+
+/* -------------------------------------------------------
+   ROOT
+-------------------------------------------------------- */
+app.get("/", (req, res) => {
+  res.send("AOK Telefontraining Backend läuft.");
+});
 
 app.listen(port, () => {
-  console.log("Server läuft auf Port", port);
+  console.log(`Backend läuft auf Port ${port}`);
 });
