@@ -81,7 +81,7 @@ z.B. "Ja hallo, hier ist ${profilText.split(",")[0]}, worum geht es denn?".
     }
 
     const completion = await client.chat.completions.create({
-      model: gpt-4o-mini",
+      model: "gpt-4o-mini",
       messages,
       temperature: 0.8,
     });
