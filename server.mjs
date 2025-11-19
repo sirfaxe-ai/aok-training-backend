@@ -1,343 +1,296 @@
-import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import OpenAI from "openai";
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import OpenAI from 'openai';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// OpenAI Client
+// OpenAI-Client
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Middleware
-app.use(cors()); // erlaubt alle Origins, kein ALLOWED_ORIGIN-Fehler mehr
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+// CORS – einfach & robust (alle Origins erlaubt)
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ----------------------------------------
-// Profile mit Name, Nachname, Geschlecht
-// ----------------------------------------
+// ----------------------------------------------------
+// Profile (Name, Geschlecht, Beschreibung)
+// ----------------------------------------------------
 const profiles = {
   K1: {
-    id: "K1",
-    name: "Daniel Koch",
-    lastName: "Koch",
-    gender: "m",
-    description: "38 Jahre, sportlicher Familienvater, Elektriker.",
+    fullName: 'Daniel Koch',
+    gender: 'm',
+    description: '38 Jahre, sportlicher Familienvater, Elektriker, viel unterwegs.',
   },
   K2: {
-    id: "K2",
-    name: "Jasmin Hoffmann",
-    lastName: "Hoffmann",
-    gender: "f",
-    description: "31 Jahre, alleinerziehend, gestresst, wenig Zeit.",
+    fullName: 'Jasmin Hoffmann',
+    gender: 'f',
+    description: '31 Jahre, alleinerziehend, gestresst, wenig Zeit, aber gesundheitsbewusst.',
   },
   K3: {
-    id: "K3",
-    name: "Horst Meier",
-    lastName: "Meier",
-    gender: "m",
-    description: "72 Jahre, Rentner, ruhiges Temperament, skeptisch.",
+    fullName: 'Horst Meier',
+    gender: 'm',
+    description: '72 Jahre, Rentner mit Rückenproblemen, eher ruhig, leicht skeptisch.',
   },
   K4: {
-    id: "K4",
-    name: "Lea Weber",
-    lastName: "Weber",
-    gender: "f",
-    description: "24 Jahre, Berufseinsteigerin, freundlich, offen.",
+    fullName: 'Lea Weber',
+    gender: 'f',
+    description: '24 Jahre, Berufseinsteigerin, freundlich, offen, digitalaffin.',
   },
   K5: {
-    id: "K5",
-    name: "Mehmet Arslan",
-    lastName: "Arslan",
-    gender: "m",
-    description: "44 Jahre, selbstständig, pragmatisch, knapp angebunden.",
+    fullName: 'Mehmet Arslan',
+    gender: 'm',
+    description: '44 Jahre, selbstständiger Handwerker, pragmatisch, knapp angebunden.',
   },
   K6: {
-    id: "K6",
-    name: "Nadine Krüger",
-    lastName: "Krüger",
-    gender: "f",
-    description: "36 Jahre, Familienmanagerin, oft gehetzt, freundlich.",
+    fullName: 'Nadine Krüger',
+    gender: 'f',
+    description: '36 Jahre, Familienmanagerin, viel Stress, grundsätzlich freundlich.',
   },
   K7: {
-    id: "K7",
-    name: "Wolfgang Lüders",
-    lastName: "Lüders",
-    gender: "m",
-    description: "68 Jahre, skeptisch, hinterfragt alles.",
+    fullName: 'Wolfgang Lüders',
+    gender: 'm',
+    description: '68 Jahre, skeptischer Rentner, hinterfragt Angebote kritisch.',
   },
   K8: {
-    id: "K8",
-    name: "Anna Berger",
-    lastName: "Berger",
-    gender: "f",
-    description: "29 Jahre, junge Mutter, vorsichtig, sicherheitsbedacht.",
+    fullName: 'Anna Berger',
+    gender: 'f',
+    description: '29 Jahre, junge Mutter, müde, sicherheitsbedacht, achtet auf Familie.',
   },
   K9: {
-    id: "K9",
-    name: "Christian Falk",
-    lastName: "Falk",
-    gender: "m",
-    description: "42 Jahre, IT-Führungskraft, effizient, will klare Infos.",
+    fullName: 'Christian Falk',
+    gender: 'm',
+    description: '42 Jahre, IT-Führungskraft, effizient, stellt konkrete Fragen.',
   },
   K10: {
-    id: "K10",
-    name: "Patrick Sommer",
-    lastName: "Sommer",
-    gender: "m",
-    description: "34 Jahre, sehr freundlich, offen, gesprächig.",
+    fullName: 'Patrick Sommer',
+    gender: 'm',
+    description: '34 Jahre, sehr freundlich, offen, gesprächig.',
   },
 };
 
-// ----------------------------------------
-// Helper: Systemprompt für Chat
-// ----------------------------------------
-function buildSystemPrompt(profileId) {
-  const profile = profiles[profileId];
+// Stimmzuordnung – nur erlaubte Voices, passend zu m/f/älter
+const voiceMap = {
+  K1: 'alloy',   // Daniel – männlich, neutral
+  K2: 'verse',   // Jasmin – weiblich
+  K3: 'sage',    // Horst – ältere, ruhigere Stimme
+  K4: 'verse',   // Lea – weiblich
+  K5: 'ash',     // Mehmet – männlich, etwas kerniger
+  K6: 'coral',   // Nadine – weiblich
+  K7: 'sage',    // Wolfgang – älter, skeptisch
+  K8: 'shimmer', // Anna – weiblich, etwas heller
+  K9: 'echo',    // Christian – männlich, klar
+  K10: 'marin',  // Patrick – männlich, freundlich
+};
 
-  const defaultDesc =
-    "Du bist ein realistischer AOK-NordWest-Kunde in einem Telefontraining mit einem Mitarbeiter.";
-
-  if (!profile) {
-    return `
-${defaultDesc}
-
-WICHTIG:
-- Du meldest dich am Telefon wie ein echter Privatkunde: z.B. "Ja?", "Hallo?", "[Nachname]?".
-- Keine langen Monologe – 1–2 Sätze.
-- Du verhältst dich wie eine ganz normale Privatperson.
-- Du nennst keine Fantasienamen wie "Weber" oder Details, die kein echter Kunde sagen würde.
-`.trim();
-  }
-
-  const greetingExamples =
-    profile.gender === "f"
-      ? `"Ja, hier ist Frau ${profile.lastName}.", "${profile.lastName}?", "Ja?"`
-      : `"Ja, hier ist Herr ${profile.lastName}.", "${profile.lastName}?", "Ja?"`;
-
-  return `
-Du bist ${profile.name}, eine real existierende Privatperson im AOK-NordWest-Telefontraining.
-
-Kurzbeschreibung:
-${profile.description}
-
-WICHTIG:
-- Du meldest dich am Telefon NATÜRLICH mit deinem eigenen Namen.
-- Begrüßungsbeispiele (nur Beispiele!): ${greetingExamples}
-- Du benutzt IMMER deinen eigenen Nachnamen (${profile.lastName}) und NIEMALS einen anderen Namen.
-- KEINE Sätze wie "Hallo, ich bin ${profile.name}, XX Jahre alt. Worum geht's denn?".
-- Du antwortest in 1–2 Sätzen, wie ein echter Kunde:
-  - manchmal knapp
-  - manchmal etwas genervt oder skeptisch
-  - manchmal freundlich und offen
-- Du bist KEIN Verkäufer, sondern die privat angerufene Person.
-- Reagiere inhaltlich passend auf das, was der Mitarbeiter sagt (Rücken, Ernährung, digitale Angebote, Arzt in der Tasche etc.).
-`.trim();
+// Helper: Nachname aus fullName holen
+function getLastName(fullName) {
+  if (!fullName) return '';
+  const parts = fullName.trim().split(/\s+/);
+  return parts[parts.length - 1];
 }
 
-// ----------------------------------------
+// ----------------------------------------------------
 // 1) CUSTOMER REPLY (Chat)
-// ----------------------------------------
-app.post("/chat", async (req, res) => {
+// ----------------------------------------------------
+app.post('/chat', async (req, res) => {
   try {
     const { profileId, history } = req.body;
+    const profile = profiles[profileId] || null;
 
-    if (!profileId) {
-      return res.status(400).json({ error: "profileId fehlt" });
-    }
+    const fullName = profile?.fullName || 'Unbekannter Kunde';
+    const lastName = getLastName(fullName);
+    const description = profile?.description || 'Keine weiteren Details bekannt.';
 
-    const systemPrompt = buildSystemPrompt(profileId);
+    const systemPrompt = `
+Du bist eine reale Privatperson in einem AOK NordWest Telefontraining.
 
-    const messages = [
-      { role: "system", content: systemPrompt },
-      ...(Array.isArray(history) ? history : []),
-    ];
+Name: ${fullName}
+Nachname: ${lastName}
+Profil: ${description}
 
-    if (!history || history.length === 0) {
-      // Erster Turn: Kunde hebt ab
+WICHTIG:
+- Du bist der KUNDE, nicht der Mitarbeiter.
+- Du sprichst NIEMALS explizit über dein Profil oder deine Beschreibung.
+- Du meldest dich am Telefon ganz normal, z.B.:
+  - "Ja?"
+  - "Ja, hallo?"
+  - "${lastName} hier."
+  - "Ja, ${lastName}?"
+- Verwende nur deinen eigenen Nachnamen (${lastName}), wenn du dich mit Namen meldest.
+- KEINE Sätze wie: "Ich bin ${fullName}, X Jahre alt, worum geht's denn?"
+- Antworte kurz und realistisch: meist 1–3 Sätze.
+- Reagiere passend auf das, was der Mitarbeiter sagt (Rücken, Ernährung, Arzt in der Tasche, Apps usw.).
+- Du bist mal genervt, mal freundlich, mal skeptisch – passend zu deinem Profil, aber immer glaubwürdig.
+- Gib niemals Infos preis, die kein echter Kunde am Telefon nennen würde (z. B. "Ich bin eine KI" oder "mein Profil ist ...").
+    `.trim();
+
+    const messages = [{ role: 'system', content: systemPrompt }];
+
+    if (Array.isArray(history) && history.length > 0) {
+      for (const msg of history) {
+        if (!msg || !msg.role || !msg.content) continue;
+        // Rollen aus dem Frontend: "user" und "assistant"
+        messages.push({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content,
+        });
+      }
+    } else {
+      // Kein Verlauf – Gespräch beginnt
       messages.push({
-        role: "user",
-        content:
-          "Der AOK-Mitarbeiter ruft dich gerade an. Du hebst ab und meldest dich so, wie du dich am Telefon üblicherweise meldest.",
+        role: 'user',
+        content: 'Das ist der Moment, in dem das Telefon klingelt und du dran gehst.',
       });
     }
 
     const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: 'gpt-4o-mini',
       temperature: 0.7,
       messages,
     });
 
-    const reply = completion.choices?.[0]?.message?.content?.trim() || "";
+    const reply = completion.choices?.[0]?.message?.content?.trim() || 'Entschuldigung, da ist etwas schiefgelaufen.';
     res.json({ reply });
   } catch (err) {
-    console.error("Chat Error:", err);
-    res.status(500).json({ error: "Chat-Fehler" });
+    console.error('Chat Error:', err);
+    res.status(500).json({ error: 'Chat-Fehler' });
   }
 });
 
-// ----------------------------------------
-// 2) SPEECH TO TEXT (Whisper / gpt-4o-transcribe)
-//    erwartet audioBase64 aus dem Frontend
-// ----------------------------------------
-app.post("/transcribe", async (req, res) => {
+// ----------------------------------------------------
+// 2) SPEECH TO TEXT – Whisper (gpt-4o-transcribe)
+// (falls du es später wieder nutzt – aktuell macht dein
+//  Frontend Browser-STT, aber wir lassen es drin)
+// ----------------------------------------------------
+app.post('/transcribe', async (req, res) => {
   try {
     const { audioBase64 } = req.body;
 
     if (!audioBase64) {
-      return res.status(400).json({ error: "audioBase64 fehlt" });
+      return res.status(400).json({ error: 'audioBase64 fehlt' });
     }
 
-    const buffer = Buffer.from(audioBase64, "base64");
+    const buffer = Buffer.from(audioBase64, 'base64');
 
     const transcription = await client.audio.transcriptions.create({
       file: buffer,
-      model: "gpt-4o-transcribe",
-      response_format: "json",
-      // optional: language: "de",
+      model: 'gpt-4o-transcribe',
+      response_format: 'json',
     });
 
     res.json({ text: transcription.text });
   } catch (err) {
-    console.error("Whisper Fehler:", err.response?.data || err);
-    res.status(500).json({ error: "Whisper-Fehler" });
+    console.error('Whisper Fehler:', err.response?.data || err);
+    res.status(500).json({ error: 'Whisper-Fehler' });
   }
 });
 
-// ----------------------------------------
-// 3) TEXT TO SPEECH (TTS)
-//    Männer → "männlich" klingende Stimmen
-//    Frauen → "weiblich" klingende Stimmen
-// ----------------------------------------
-app.post("/voice", async (req, res) => {
+// ----------------------------------------------------
+// 3) TEXT TO SPEECH – passende Stimmen pro Profil
+// ----------------------------------------------------
+app.post('/voice', async (req, res) => {
   try {
     const { text, profileId } = req.body;
 
     if (!text || !text.trim()) {
-      return res.status(400).json({ error: "Text für TTS fehlt" });
+      return res.status(400).json({ error: 'Kein Text für TTS übergeben.' });
     }
 
-    const profile = profiles[profileId];
-
-    // Stimmen-Zuordnung (subjektiv, aber konsistent)
-    // männlich wirkend: alloy, sage, onyx, marin, cedar, ash, ballad
-    // weiblich wirkend: verse, coral, nova, shimmer, fable
-    let voice = "alloy"; // Default
-
-    if (profile?.gender === "f") {
-      // Frauen
-      voice = "verse";
-    } else if (profile?.gender === "m") {
-      // Männer
-      if (profileId === "K3" || profileId === "K7") {
-        // ältere Herren eher ruhige Stimme
-        voice = "sage";
-      } else {
-        voice = "alloy";
-      }
-    }
+    const voice = voiceMap[profileId] || 'alloy';
 
     const tts = await client.audio.speech.create({
-      model: "gpt-4o-mini-tts",
+      model: 'gpt-4o-mini-tts',
       voice,
       input: text,
-      format: "wav",
+      format: 'wav',
     });
 
     const wav = Buffer.from(await tts.arrayBuffer());
-    res.setHeader("Content-Type", "audio/wav");
+    res.setHeader('Content-Type', 'audio/wav');
     res.send(wav);
   } catch (err) {
-    console.error("TTS Fehler:", err);
-    res.status(500).json({ error: "TTS-Fehler" });
+    console.error('TTS Fehler:', err);
+    res.status(500).json({ error: 'TTS-Fehler' });
   }
 });
 
-// ----------------------------------------
-// 4) FEEDBACK – ausführlich & strukturiert
-//    aktuell: Feedback zur letzten Antwort
-// ----------------------------------------
-app.post("/feedback", async (req, res) => {
+// ----------------------------------------------------
+// 4) FEEDBACK – ausführlicher Trainerbericht
+//    (aktuell auf letzte Antwort, kann aber auch
+//     ganze Konversation verarbeiten, wenn du sie schickst)
+// ----------------------------------------------------
+app.post('/feedback', async (req, res) => {
   try {
-    const { transcript, profileId } = req.body;
+    const { transcript, conversation, profileId } = req.body;
 
-    if (!transcript || !transcript.trim()) {
-      return res.status(400).json({ error: "Kein Text für Feedback übergeben" });
+    // Falls du später mal den ganzen Verlauf schicken willst:
+    const textBasis = conversation || transcript;
+
+    if (!textBasis || !textBasis.trim()) {
+      return res.status(400).json({ error: 'Kein Text für Feedback übergeben.' });
     }
 
     const profile = profiles[profileId];
     const kundenInfo = profile
-      ? `Der angenommene Kunde ist ${profile.name} (${profile.description}).`
-      : "Der angenommene Kunde ist eine privatversicherte Person bei der AOK NordWest.";
+      ? `Angenommener Kunde: ${profile.fullName}. Kurzprofil: ${profile.description}.`
+      : 'Angenommener Kunde: Privatperson der AOK NordWest.';
 
     const prompt = `
-Du bist ein sehr erfahrener Trainer für AOK-Telefonate (Beratung & Vertrieb).
+Du bist ein erfahrener Trainer für AOK-Telefonate (Beratung & Verkauf).
+Analysiere folgende Antwort bzw. diesen Gesprächsauszug eines Mitarbeiters.
 
 ${kundenInfo}
 
-Analysiere die folgende (letzte) Antwort des Mitarbeiters in einem Trainingsgespräch:
+Text des Mitarbeiters / Gesprächsauszug:
+"${textBasis}"
 
-"${transcript}"
+Erstelle ein strukturiertes, praxisnahes Feedback auf Deutsch:
 
-Gib ein ausführliches, aber praxisnahes Feedback auf DEUTSCH in folgender Struktur:
-
-1. Kurzfazit (2–3 Sätze)
+1. Kurz-Zusammenfassung (1–2 Sätze)
 2. Inhalt & Nutzenargumentation
-   - Wird ein klarer Nutzen für den Kunden erkennbar?
-   - Wird der Bezug zu seiner Situation (Profil) hergestellt?
-3. Sprache & Tempo
-   - Verständlichkeit
-   - Satzlänge
-   - Tempo (zu schnell/zu langsam/angenehm)
-4. Tonalität & Empathie
-   - Wirkt die Antwort freundlich, wertschätzend, ruhig?
-   - Passt die Tonalität zur Situation und zum Kundentyp?
-5. Struktur & Leitfaden
-   - Ist erkennbar, wo der Mitarbeiter im Gespräch steht?
-   - Gibt es einen roten Faden (z.B. Einstieg, Bedarf, Angebot, Abschluss)?
-6. Redeanteil & Fragetechnik
-   - Wirkt die Antwort wie ein Monolog oder lässt sie Raum für den Kunden?
-   - Werden passende Fragen gestellt (offene Fragen, Verständnisfragen)?
-7. Konkrete Verbesserungsvorschläge
-   - 5–7 Bulletpoints, sehr konkret und umsetzbar
+3. Sprachgeschwindigkeit & Verständlichkeit
+4. Tonalität & Empathie (passt sie zur Kundensituation?)
+5. Gesprächsführung & Struktur (roter Faden, Leitfadenorientierung, Fragen vs. Monolog)
+6. Redeanteil (wirkt der Mitarbeiter eher monologisierend oder dialogorientiert?)
+7. Konkrete Verbesserungsvorschläge (5–7 Bullet Points, sehr praktisch formuliert)
 8. Schulnote (1–6) mit kurzer Begründung
 
-Schreibe so, dass der Mitarbeiter direkt versteht, was er beim nächsten Versuch besser machen kann.
+Sei ehrlich, aber konstruktiv. Schreib so, dass der Mitarbeiter daraus direkt lernen kann.
     `.trim();
 
     const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: 'gpt-4o-mini',
       messages: [
         {
-          role: "system",
+          role: 'system',
           content:
-            "Du bist ein professioneller Trainer für AOK-Telefonate und gibst klares, wertschätzendes und ehrliches Feedback.",
+            'Du bist ein professioneller Trainer für telefonische Beratungs- und Verkaufsgespräche der AOK NordWest.',
         },
-        { role: "user", content: prompt },
+        { role: 'user', content: prompt },
       ],
       temperature: 0.4,
-      max_tokens: 800,
+      max_tokens: 700,
     });
 
     const feedbackText =
-      completion.choices?.[0]?.message?.content?.trim() ||
-      "Es konnte kein Feedback generiert werden.";
+      completion.choices?.[0]?.message?.content?.trim() || 'Es konnte kein Feedback generiert werden.';
 
     res.json({ feedback: feedbackText });
   } catch (err) {
-    console.error("Feedback Fehler:", err);
-    res.status(500).json({ error: "Feedback-Fehler" });
+    console.error('Feedback Fehler:', err);
+    res.status(500).json({ error: 'Feedback-Fehler' });
   }
 });
 
-// ----------------------------------------
-// Root / Healthcheck
-// ----------------------------------------
-app.get("/", (req, res) => {
-  res.send("AOK Telefontraining Backend läuft.");
+// ----------------------------------------------------
+// 5) Root / Healthcheck
+// ----------------------------------------------------
+app.get('/', (req, res) => {
+  res.send('AOK Telefontraining Backend läuft.');
 });
 
 app.listen(port, () => {
